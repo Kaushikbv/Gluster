@@ -36,6 +36,20 @@
 #include "protocol-common.h"
 #include "cli1-xdr.h"
 
+
+static const char *
+id_sel (void *wcon)
+{
+        return (const char *)wcon;
+}
+
+static char *
+str_getunamb (const char *tok, char **opwords)
+{
+        return (char *)cli_getunamb (tok, (void **)opwords, id_sel);
+}
+
+
 int32_t
 cli_cmd_bricks_parse (const char **words, int wordcount, int brick_index,
                       char **bricks, int *brick_count)
@@ -150,6 +164,9 @@ cli_cmd_volume_create_parse (const char **words, int wordcount, dict_t **options
         int32_t index = 0;
         char    *bricks = NULL;
         int32_t brick_count = 0;
+        char    *opwords_cl[] = { "replica", "stripe", NULL };
+        char    *opwords_tr[] = { "transport", NULL };
+        char    *w = NULL;
 
         GF_ASSERT (words);
         GF_ASSERT (options);
@@ -199,7 +216,11 @@ cli_cmd_volume_create_parse (const char **words, int wordcount, dict_t **options
                 ret = -1;
                 goto out;
         }
-        if ((strcasecmp (words[3], "replica")) == 0) {
+        w = str_getunamb (words[3], opwords_cl);
+        if (!w) {
+                type = GF_CLUSTER_TYPE_NONE;
+                brick_index = 3;
+        } else if ((strcmp (w, "replica")) == 0) {
                 type = GF_CLUSTER_TYPE_REPLICATE;
                 if (wordcount < 5) {
                         ret = -1;
@@ -215,7 +236,7 @@ cli_cmd_volume_create_parse (const char **words, int wordcount, dict_t **options
                 if (ret)
                         goto out;
                 brick_index = 5;
-        } else if ((strcasecmp (words[3], "stripe")) == 0) {
+        } else if ((strcmp (w, "stripe")) == 0) {
                 type = GF_CLUSTER_TYPE_STRIPE;
                 if (wordcount < 5) {
                         ret = -1;
@@ -231,10 +252,8 @@ cli_cmd_volume_create_parse (const char **words, int wordcount, dict_t **options
                 if (ret)
                         goto out;
                 brick_index = 5;
-        } else {
-                type = GF_CLUSTER_TYPE_NONE;
-                brick_index = 3;
-        }
+        } else
+                GF_ASSERT (!"opword mismatch");
 
         ret = dict_set_int32 (dict, "type", type);
         if (ret)
@@ -250,7 +269,7 @@ cli_cmd_volume_create_parse (const char **words, int wordcount, dict_t **options
                 goto out;
         }
 
-        if (strcasecmp(words[index], "transport") == 0) {
+        if (str_getunamb (words[3], opwords_tr)) {
                 brick_index = index+2;
                 if (wordcount < (index + 2)) {
                         ret = -1;
@@ -387,6 +406,9 @@ cli_cmd_quota_parse (const char **words, int wordcount, dict_t **options)
         char             key[20] = {0, };
         uint64_t         value   = 0;
         gf_quota_type    type    = GF_QUOTA_OPTION_TYPE_NONE;
+        char           *opwords[] = { "enable", "disable", "limit-usage",
+                                      "remove", "list", "version", NULL };
+        char            *w       = NULL;
 
         GF_ASSERT (words);
         GF_ASSERT (options);
@@ -434,18 +456,23 @@ cli_cmd_quota_parse (const char **words, int wordcount, dict_t **options)
         if (ret)
                 goto out;
 
+        w = str_getunamb (words[3], opwords);
+        if (!w) {
+                ret = - 1;
+                goto out;
+        }
 
-        if ((strcasecmp (words[3], "enable")) == 0 && wordcount == 4) {
+        if ((strcmp (w, "enable")) == 0 && wordcount == 4) {
                 type = GF_QUOTA_OPTION_TYPE_ENABLE;
                 goto set_type;
         }
 
-        if (strcasecmp (words[3], "disable") == 0 && wordcount == 4) {
+        if (strcmp (w, "disable") == 0 && wordcount == 4) {
                 type = GF_QUOTA_OPTION_TYPE_DISABLE;
                 goto set_type;
         }
 
-        if (strcasecmp (words[3], "limit-usage") == 0) {
+        if (strcmp (w, "limit-usage") == 0) {
                 if (wordcount != 6) {
                         ret = -1;
                         goto out;
@@ -480,7 +507,7 @@ cli_cmd_quota_parse (const char **words, int wordcount, dict_t **options)
 
                 goto set_type;
         }
-        if (strcasecmp (words[3], "remove") == 0) {
+        if (strcmp (w, "remove") == 0) {
                 if (wordcount != 5) {
                         ret = -1;
                         goto out;
@@ -500,7 +527,7 @@ cli_cmd_quota_parse (const char **words, int wordcount, dict_t **options)
                 goto set_type;
         }
 
-        if (strcasecmp (words[3], "list") == 0) {
+        if (strcmp (w, "list") == 0) {
                         if (wordcount < 4) {
                                 ret = -1;
                                 goto out;
@@ -524,13 +551,11 @@ cli_cmd_quota_parse (const char **words, int wordcount, dict_t **options)
                         goto set_type;
         }
 
-        if (strcasecmp (words[3], "version") == 0) {
+        if (strcmp (w, "version") == 0) {
                 type = GF_QUOTA_OPTION_TYPE_VERSION;
 
-        } else {
-                ret = -1;
-                goto out;
-        }
+        } else
+                GF_ASSERT (!"opword mismatch");
 
 set_type:
         ret = dict_set_int32 (dict, "type", type);
@@ -819,10 +844,12 @@ cli_cmd_volume_replace_brick_parse (const char **words, int wordcount,
         dict_t  *dict = NULL;
         char    *volname = NULL;
         int     ret = -1;
-        char    *op = NULL;
         int     op_index = 0;
         char    *delimiter = NULL;
         gf1_cli_replace_op replace_op = GF_REPLACE_OP_NONE;
+        char    *opwords[] = { "start", "commit", "pause", "abort", "status",
+                                NULL };
+        char    *w = NULL;
 
         GF_ASSERT (words);
         GF_ASSERT (options);
@@ -895,19 +922,21 @@ cli_cmd_volume_replace_brick_parse (const char **words, int wordcount,
                 goto out;
         }
 
-        op = (char *) words[op_index];
+        w = str_getunamb (words[op_index], opwords);
 
-        if (!strcasecmp ("start", op)) {
+        if (!w) {
+        } else if (!strcmp ("start", w)) {
                 replace_op = GF_REPLACE_OP_START;
-        } else if (!strcasecmp ("commit", op)) {
+        } else if (!strcmp ("commit", w)) {
                 replace_op = GF_REPLACE_OP_COMMIT;
-        } else if (!strcasecmp ("pause", op)) {
+        } else if (!strcmp ("pause", w)) {
                 replace_op = GF_REPLACE_OP_PAUSE;
-        } else if (!strcasecmp ("abort", op)) {
+        } else if (!strcmp ("abort", w)) {
                 replace_op = GF_REPLACE_OP_ABORT;
-        } else if (!strcasecmp ("status", op)) {
+        } else if (!strcmp ("status", w)) {
                 replace_op = GF_REPLACE_OP_STATUS;
-        }
+        } else
+                GF_ASSERT (!"opword mismatch");
 
         /* commit force option */
         op_index = 6;
@@ -918,8 +947,7 @@ cli_cmd_volume_replace_brick_parse (const char **words, int wordcount,
         }
 
         if (wordcount == (op_index + 1)) {
-                op = (char *) words[op_index];
-                if (!strcasecmp ("force", op)) {
+                if (!strcmp ("force", words[op_index])) {
                         replace_op = GF_REPLACE_OP_COMMIT_FORCE;
                 }
         }
@@ -1136,6 +1164,9 @@ cli_cmd_gsync_set_parse (const char **words, int wordcount, dict_t **options)
         unsigned           masteri = 0;
         unsigned           slavei  = 0;
         unsigned           cmdi    = 0;
+        char               *opwords[] = { "status", "start", "stop", "config",
+                                          NULL };
+        char               *w = NULL;
 
         GF_ASSERT (words);
         GF_ASSERT (options);
@@ -1191,28 +1222,32 @@ cli_cmd_gsync_set_parse (const char **words, int wordcount, dict_t **options)
         if (slavei && !gsyncd_url_check (words[slavei]))
                 goto out;
 
-        if (strcmp (words[cmdi], "status") == 0) {
+        w = str_getunamb (words[cmdi], opwords);
+        if (!w)
+                goto out;
+
+        if (strcmp (w, "status") == 0) {
                 type = GF_GSYNC_OPTION_TYPE_STATUS;
 
                 if (slavei && !masteri)
                         goto out;
-        } else if (strcmp (words[cmdi], "config") == 0) {
+        } else if (strcmp (w, "config") == 0) {
                 type = GF_GSYNC_OPTION_TYPE_CONFIG;
 
                 if (!slavei)
                         goto out;
-        } else if (strcmp (words[cmdi], "start") == 0) {
+        } else if (strcmp (w, "start") == 0) {
                 type = GF_GSYNC_OPTION_TYPE_START;
 
                 if (!masteri || !slavei)
                         goto out;
-        } else if (strcmp (words[cmdi], "stop") == 0) {
+        } else if (strcmp (w, "stop") == 0) {
                 type = GF_GSYNC_OPTION_TYPE_STOP;
 
                 if (!masteri || !slavei)
                         goto out;
         } else
-                goto out;
+                GF_ASSERT (!"opword mismatch");
 
         if (type != GF_GSYNC_OPTION_TYPE_CONFIG && cmdi < wordcount - 1)
                 goto out;
@@ -1296,6 +1331,8 @@ cli_cmd_volume_profile_parse (const char **words, int wordcount,
         char      *volname    = NULL;
         int       ret         = -1;
         gf1_cli_stats_op op = GF_CLI_STATS_NONE;
+        char      *opwords[] = { "start", "stop", "info", NULL };
+        char      *w = NULL;
 
         GF_ASSERT (words);
         GF_ASSERT (options);
@@ -1316,16 +1353,19 @@ cli_cmd_volume_profile_parse (const char **words, int wordcount,
         if (ret)
                 goto out;
 
-        if (strcmp (words[3], "start") == 0) {
-                op = GF_CLI_STATS_START;
-        } else if (strcmp (words[3], "stop") == 0) {
-                op = GF_CLI_STATS_STOP;
-        } else if (strcmp (words[3], "info") == 0) {
-                op = GF_CLI_STATS_INFO;
-        } else {
+        w = str_getunamb (words[3], opwords);
+        if (!w) {
                 ret = -1;
                 goto out;
         }
+        if (strcmp (w, "start") == 0) {
+                op = GF_CLI_STATS_START;
+        } else if (strcmp (w, "stop") == 0) {
+                op = GF_CLI_STATS_STOP;
+        } else if (strcmp (w, "info") == 0) {
+                op = GF_CLI_STATS_INFO;
+        } else
+                GF_ASSERT (!"opword mismatch");
         ret = dict_set_int32 (dict, "op", (int32_t)op);
         *options = dict;
 out:
@@ -1351,6 +1391,10 @@ cli_cmd_volume_top_parse (const char **words, int wordcount,
         int32_t  blk_size       = 0;
         int32_t  count          = 0;
         char    *delimiter      = NULL;
+        char    *opwords[]      = { "open", "read", "write", "opendir",
+                                    "readdir", "read-perf", "write-perf",
+                                    NULL };
+        char    *w = NULL;
 
         GF_ASSERT (words);
         GF_ASSERT (options);
@@ -1376,26 +1420,29 @@ cli_cmd_volume_top_parse (const char **words, int wordcount,
         if (ret)
                 goto out;
 
-        if (strcmp (words[3], "open") == 0) {
-                top_op = GF_CLI_TOP_OPEN;
-        } else if (strcmp (words[3], "read") == 0) {
-                top_op = GF_CLI_TOP_READ;
-        } else if (strcmp (words[3], "write") == 0) {
-                top_op = GF_CLI_TOP_WRITE;
-        } else if (strcmp (words[3], "opendir") == 0) {
-                top_op = GF_CLI_TOP_OPENDIR;
-        } else if (strcmp (words[3], "readdir") == 0) {
-                top_op = GF_CLI_TOP_READDIR;
-        } else if (strcmp (words[3], "read-perf") == 0) {
-                top_op = GF_CLI_TOP_READ_PERF;
-                perf = 1;
-        } else if (strcmp (words[3], "write-perf") == 0) {
-                top_op = GF_CLI_TOP_WRITE_PERF;
-                perf = 1;
-        } else {
+        w = str_getunamb (words[3], opwords);
+        if (!w) {
                 ret = -1;
                 goto out;
-        } 
+        }
+        if (strcmp (w, "open") == 0) {
+                top_op = GF_CLI_TOP_OPEN;
+        } else if (strcmp (w, "read") == 0) {
+                top_op = GF_CLI_TOP_READ;
+        } else if (strcmp (w, "write") == 0) {
+                top_op = GF_CLI_TOP_WRITE;
+        } else if (strcmp (w, "opendir") == 0) {
+                top_op = GF_CLI_TOP_OPENDIR;
+        } else if (strcmp (w, "readdir") == 0) {
+                top_op = GF_CLI_TOP_READDIR;
+        } else if (strcmp (w, "read-perf") == 0) {
+                top_op = GF_CLI_TOP_READ_PERF;
+                perf = 1;
+        } else if (strcmp (w, "write-perf") == 0) {
+                top_op = GF_CLI_TOP_WRITE_PERF;
+                perf = 1;
+        } else
+                GF_ASSERT (!"opword mismatch");
         ret = dict_set_int32 (dict, "top-op", (int32_t)top_op);
         if (ret)
                 goto out;
