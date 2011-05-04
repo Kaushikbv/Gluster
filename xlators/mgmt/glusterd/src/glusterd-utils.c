@@ -43,6 +43,7 @@
 #include "glusterd-store.h"
 #include "glusterd-volgen.h"
 #include "glusterd-pmap.h"
+#include "glusterd-geo-replication.h"
 
 #include <sys/resource.h>
 #include <inttypes.h>
@@ -3292,84 +3293,26 @@ mkdir_if_missing (char *path)
 }
 
 int
-glusterd_start_gsync (glusterd_volinfo_t *master_vol, char *slave,
-                      char *glusterd_uuid_str, char **op_errstr)
+glusterd_query_extutil (char *resbuf, char *cmd)
 {
-        int32_t         ret     = 0;
-        int32_t         status  = 0;
-        char            buf[PATH_MAX]   = {0,};
-        char            uuid_str [64] = {0};
-        xlator_t        *this = NULL;
-        glusterd_conf_t *priv = NULL;
-        int             errcode = 0;
+        FILE               *in  = NULL;
+        char               *ptr = NULL;
+        int                 ret = 0;
 
-        this = THIS;
-        GF_ASSERT (this);
-        priv = this->private;
-        GF_ASSERT (priv);
-
-        uuid_utoa_r (priv->uuid, uuid_str);
-        if (strcmp (uuid_str, glusterd_uuid_str))
-                goto out;
-
-        ret = gsync_status (master_vol->volname, slave, &status);
-        if (status == 0)
-                goto out;
-
-        snprintf (buf, PATH_MAX, "%s/"GEOREP"/%s", priv->workdir, master_vol->volname);
-        ret = mkdir_if_missing (buf);
-        if (ret) {
-                errcode = -1;
-                goto out;
+        if (!(in = popen(cmd, "r"))) {
+                gf_log ("", GF_LOG_ERROR, "popen failed");
+                return -1;
         }
 
-        snprintf (buf, PATH_MAX, DEFAULT_LOG_FILE_DIRECTORY"/"GEOREP"/%s",
-                  master_vol->volname);
-        ret = mkdir_if_missing (buf);
-        if (ret) {
-                errcode = -1;
-                goto out;
-        }
+        ptr = fgets(resbuf, PATH_MAX, in);
+        if (ptr)
+                resbuf[strlen(resbuf)-1] = '\0'; //strip off \n
 
-        uuid_utoa_r (master_vol->volume_id, uuid_str);
-        ret = snprintf (buf, PATH_MAX,
-                        GSYNCD_PREFIX"/gsyncd -c %s/"GSYNC_CONF" "
-                        ":%s %s --config-set session-owner %s",
-                        priv->workdir, master_vol->volname, slave, uuid_str);
-        if (ret <= 0 || ret >= PATH_MAX)
-                ret = -1;
-        if (ret != -1)
-                ret = gf_system (buf) ? -1 : 0;
-        if (ret == -1) {
-                errcode = -1;
-                goto out;
-        }
+        ret |= pclose (in);
 
-        ret = snprintf (buf, PATH_MAX, GSYNCD_PREFIX "/gsyncd --monitor -c "
-                        "%s/"GSYNC_CONF" :%s %s", priv->workdir,
-                        master_vol->volname, slave);
-        if (ret <= 0) {
-                ret = -1;
-                errcode = -1;
-                goto out;
-        }
+        if (ret)
+                gf_log ("", GF_LOG_ERROR, "popen failed");
 
-        ret = gf_system (buf);
-        if (ret == -1) {
-                gf_asprintf (op_errstr, GEOREP" start failed for %s %s",
-                             master_vol->volname, slave);
-                goto out;
-        }
-
-        ret = 0;
-
-out:
-        if ((ret != 0) && errcode == -1) {
-                if (op_errstr)
-                        *op_errstr = gf_strdup ("internal error, cannot start"
-                                                "the " GEOREP " session");
-        }
-
-        gf_log ("", GF_LOG_DEBUG, "Returning %d", ret);
-        return ret;
+        return ret ? -1 : 0;
 }
+

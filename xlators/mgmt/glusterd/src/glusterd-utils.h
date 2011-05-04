@@ -274,6 +274,7 @@ glusterd_delete_all_bricks (glusterd_volinfo_t* volinfo);
 int
 glusterd_restart_gsyncds (glusterd_conf_t *conf);
 int
-glusterd_start_gsync (glusterd_volinfo_t *master_vol, char *slave,
-                      char *glusterd_uuid_str, char **op_errstr);
+glusterd_query_extutil (char *resbuf, char *cmd);
+int
+mkdir_if_missing (char *path);
 #endif
