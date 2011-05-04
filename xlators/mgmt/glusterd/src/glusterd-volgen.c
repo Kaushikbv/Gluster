@@ -37,7 +37,7 @@
 #include "glusterd-volgen.h"
 #include "glusterd-op-sm.h"
 #include "glusterd-utils.h"
-
+#include "glusterd-geo-replication.h"
 
 /* dispatch table for VOLUME SET
  * -----------------------------
